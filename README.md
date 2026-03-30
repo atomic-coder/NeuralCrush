@@ -45,8 +45,9 @@ Designing crash-absorbing structures traditionally requires running expensive fi
 
 **Stage 2** freezes the surrogate and wraps it as a gym-like environment. A Phasic Policy Gradient (PPG) agent takes sequential actions to move Voronoi seed points that define a structure's internal geometry, maximizing Crush Force Efficiency (CFE) — the ratio of mean to peak force during crush.
 
-<!-- Placeholder: add pipeline diagram here -->
-<!-- ![Pipeline](assets/pipeline.png) -->
+<p align="center">
+  <img src="assets/pipeline.png" alt="NeuralCrush Pipeline" width="800"/>
+</p>
 
 ---
 
@@ -88,8 +89,10 @@ The gate bias is initialized to $-2.0$, so $\sigma(-2) \approx 0.12$ — the net
 3. **Aggregation**: $\mathbf{m}\_i^M = \sum\_{j \in \mathcal{N}\_M(i)} \mathbf{e}\_{ij}^{\ell+1}$, $\quad \mathbf{m}\_i^W = \sum\_{j \in \mathcal{N}\_W(i)} \mathbf{e}\_{ij}^{\ell+1}$
 4. **Node update**: $\mathbf{x}\_i^{\ell+1} = \text{GatedMLP}\_N\left(\left[\mathbf{x}\_i^\ell,\ \mathbf{m}\_i^M,\ \mathbf{m}\_i^W\right]\right)$
 
-<!-- Placeholder: add gating mechanism figure here -->
-<!-- ![Gating](assets/gating_mechanism.png) -->
+<p align="center">
+  <img src="assets/gating_mechanism.png" alt="Gating Mechanism" width="700"/>
+</p>
+<p align="center"><em>Gated update block. The gate network controls how much of the candidate update is mixed into the previous state, preventing over-smoothing across 15 message-passing layers.</em></p>
 
 ### Edge Feature Construction
 
@@ -389,12 +392,12 @@ The PPG agent takes sequential actions to move Voronoi seed points, generating a
 </p>
 <p align="center"><em>5-seed Voronoi optimization over 30 episode steps. The agent learns to spread seeds to create more uniform load paths.</em></p>
  
-Force-displacement curve of the optimized structure:
+Validation Force-displacement curve of the optimized structure:
  
 <p align="center">
   <img src="assets/cfe_optimized_force_curve.png" alt="Optimized Force Curve" width="600"/>
 </p>
-<p align="center"><em>Force-displacement response of the agent's best structure. A flatter curve indicates higher CFE.</em></p>
+<p align="center"><em>Force-displacement response of the agent's best structure (CFE = 0.725). A flatter curve indicates higher CFE.</em></p>
  
 ---
 
