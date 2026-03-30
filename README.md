@@ -68,6 +68,10 @@ where $\mathbf{f}_i \in \{0,1\}^3$ encodes `[is_impactor, is_absorber, is_fixed]
 
 The network consists of $L = 15$ stacked interaction blocks followed by a decoder MLP that outputs predicted acceleration $\hat{\mathbf{a}}_i \in \mathbb{R}^2$.
 
+<p align="center">
+  <img src="assets/MGN_architecture.png" alt="MGN Architecture" width="700"/>
+</p>
+
 ### Gated Message Passing
 
 Standard message passing in deep GNNs suffers from over-smoothing — after many layers, edge and node features converge to indistinguishable vectors. This implementation uses **gated updates** on all three processors (mesh edges, world edges, nodes) to control information flow.
