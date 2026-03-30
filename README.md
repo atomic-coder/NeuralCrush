@@ -492,6 +492,6 @@ If you use this code in your research, please cite:
   author    = {Vijay},
   title     = {NeuralCrush: Graph Neural Network Surrogate and RL Optimization for Crashworthiness Design},
   year      = {2026},
-  url       = {https://github.com/YOUR_USERNAME/NeuralCrush}
+  url       = {https://github.com/atomic-coder/NeuralCrush}
 }
 ```
