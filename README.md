@@ -61,7 +61,7 @@ The model operates on a heterogeneous graph with two edge types:
 
 Each node $i$ is encoded with velocity history, inverse mass, and type flags:
 
-$$\mathbf{x}_i^0 = \text{MLP}_{\text{enc}}\Big(\big[\,\mathbf{v}_i^{t-1} \;\|\; \mathbf{v}_i^{t} \;\|\; m_i^{-1} \;\|\; \mathbf{f}_i\,\big]\Big)$$
+$$\mathbf{x}_i^0 = \text{MLP}_{\text{enc}}\left(\left[\ \mathbf{v}_i^{t-1},\ \mathbf{v}_i^{t},\ m_i^{-1},\ \mathbf{f}_i\ \right]\right)$$
 
 where $\mathbf{f}_i \in \{0,1\}^3$ encodes `[is_impactor, is_absorber, is_fixed]`.
 
@@ -73,20 +73,20 @@ Standard message passing in deep GNNs suffers from over-smoothing — after many
 
 For each processor, a GatedMLP computes a candidate update and a mixing gate in parallel:
 
-$$\mathbf{c} = \text{MLP}_{\text{update}}(\mathbf{x}_{\text{in}}), \quad g = \sigma\!\big(\text{MLP}_{\text{gate}}(\mathbf{x}_{\text{in}})\big)$$
+$$\mathbf{c} = \text{MLP}\_{\text{update}}(\mathbf{x}\_{\text{in}}), \quad g = \sigma\left(\text{MLP}\_{\text{gate}}(\mathbf{x}\_{\text{in}})\right)$$
 
 The new state blends the old state with the candidate:
 
-$$\mathbf{h}^{\ell+1} = (1 - g) \odot \mathbf{h}^{\ell} \;+\; g \odot \mathbf{c}$$
+$$\mathbf{h}^{\ell+1} = (1 - g) \odot \mathbf{h}^{\ell} + g \odot \mathbf{c}$$
 
 The gate bias is initialized to $-2.0$, so $\sigma(-2) \approx 0.12$ — the network starts near-identity and learns when to deviate. This gives the network 15 layers of depth without the representational collapse that would occur with standard residual connections.
 
 **Within each interaction block**, the update order is:
 
-1. **Mesh edge update**: $\mathbf{e}_{ij}^{\ell+1} = \text{GatedMLP}_M\big([\mathbf{x}_i^\ell \| \mathbf{x}_j^\ell \| \mathbf{e}_{ij}^\ell]\big)$
-2. **World edge update**: $\mathbf{e}_{ij}^{\ell+1} = \text{GatedMLP}_W\big([\mathbf{x}_i^\ell \| \mathbf{x}_j^\ell \| \mathbf{e}_{ij}^\ell]\big)$
-3. **Aggregation**: $\mathbf{m}_i^M = \sum_{j \in \mathcal{N}_M(i)} \mathbf{e}_{ij}^{\ell+1}, \quad \mathbf{m}_i^W = \sum_{j \in \mathcal{N}_W(i)} \mathbf{e}_{ij}^{\ell+1}$
-4. **Node update**: $\mathbf{x}_i^{\ell+1} = \text{GatedMLP}_N\big([\mathbf{x}_i^\ell \| \mathbf{m}_i^M \| \mathbf{m}_i^W]\big)$
+1. **Mesh edge update**: $\mathbf{e}\_{ij}^{\ell+1} = \text{GatedMLP}\_M\left(\left[\mathbf{x}\_i^\ell,\ \mathbf{x}\_j^\ell,\ \mathbf{e}\_{ij}^\ell\right]\right)$
+2. **World edge update**: $\mathbf{e}\_{ij}^{\ell+1} = \text{GatedMLP}\_W\left(\left[\mathbf{x}\_i^\ell,\ \mathbf{x}\_j^\ell,\ \mathbf{e}\_{ij}^\ell\right]\right)$
+3. **Aggregation**: $\mathbf{m}\_i^M = \sum\_{j \in \mathcal{N}\_M(i)} \mathbf{e}\_{ij}^{\ell+1}$, $\quad \mathbf{m}\_i^W = \sum\_{j \in \mathcal{N}\_W(i)} \mathbf{e}\_{ij}^{\ell+1}$
+4. **Node update**: $\mathbf{x}\_i^{\ell+1} = \text{GatedMLP}\_N\left(\left[\mathbf{x}\_i^\ell,\ \mathbf{m}\_i^M,\ \mathbf{m}\_i^W\right]\right)$
 
 <!-- Placeholder: add gating mechanism figure here -->
 <!-- ![Gating](assets/gating_mechanism.png) -->
@@ -95,15 +95,15 @@ The gate bias is initialized to $-2.0$, so $\sigma(-2) \approx 0.12$ — the net
 
 **Mesh edges** encode both geometric and kinematic information:
 
-$$\mathbf{e}_{ij}^M = \Big[\;\underbrace{\mathbf{p}_i - \mathbf{p}_j}_{\text{rel. position}}\;\Big\|\;\underbrace{\boldsymbol{\varepsilon}_{ij}}_{\text{strain vector}}\;\Big\|\;\underbrace{\mathbf{v}_i - \mathbf{v}_j}_{\text{rel. velocity}}\;\Big\|\;\underbrace{\|\mathbf{p}_i - \mathbf{p}_j\|}_{\text{curr. dist.}}\;\Big\|\;\underbrace{\|\mathbf{p}_i^0 - \mathbf{p}_j^0\|}_{\text{ref. dist.}}\;\Big]$$
+$$\mathbf{e}_{ij}^M = \left[\ \underbrace{\mathbf{p}_i - \mathbf{p}_j}_{\text{rel. position}},\ \underbrace{\boldsymbol{\varepsilon}\_{ij}}_{\text{strain vector}},\ \underbrace{\mathbf{v}_i - \mathbf{v}_j}_{\text{rel. velocity}},\ \underbrace{\lVert\mathbf{p}_i - \mathbf{p}_j\rVert}_{\text{curr. dist.}},\ \underbrace{\lVert\mathbf{p}_i^0 - \mathbf{p}_j^0\rVert}_{\text{ref. dist.}}\ \right]$$
 
 where the strain vector captures both magnitude and direction of deformation:
 
-$$\boldsymbol{\varepsilon}_{ij} = \frac{\|\mathbf{p}_i - \mathbf{p}_j\| - \|\mathbf{p}_i^0 - \mathbf{p}_j^0\|}{\|\mathbf{p}_i^0 - \mathbf{p}_j^0\| + \epsilon} \cdot \frac{\mathbf{p}_i - \mathbf{p}_j}{\|\mathbf{p}_i - \mathbf{p}_j\| + \epsilon}$$
+$$\boldsymbol{\varepsilon}\_{ij} = \frac{\lVert\mathbf{p}_i - \mathbf{p}_j\rVert - \lVert\mathbf{p}_i^0 - \mathbf{p}_j^0\rVert}{\lVert\mathbf{p}_i^0 - \mathbf{p}_j^0\rVert + \epsilon} \cdot \frac{\mathbf{p}_i - \mathbf{p}_j}{\lVert\mathbf{p}_i - \mathbf{p}_j\rVert + \epsilon}$$
 
 **World edges** encode contact proximity:
 
-$$\mathbf{e}_{ij}^W = \Big[\;\mathbf{p}_i - \mathbf{p}_j\;\Big\|\;\mathbf{v}_i - \mathbf{v}_j\;\Big]$$
+$$\mathbf{e}_{ij}^W = \left[\ \mathbf{p}_i - \mathbf{p}_j,\ \mathbf{v}_i - \mathbf{v}_j\ \right]$$
 
 All edge features are z-score normalized with running statistics.
 
@@ -113,17 +113,17 @@ The loss combines node-level and edge-level MAE terms. Let $\hat{\mathbf{a}}_i$ 
 
 **Node loss:**
 
-$$\mathcal{L}_{\text{node}} = |\hat{\mathbf{a}}_i - \mathbf{a}_i|$$
+$$\mathcal{L}\_{\text{node}} = \lvert\hat{\mathbf{a}}\_i - \mathbf{a}\_i\rvert$$
 
 **Structural loss** — penalizes inconsistency of *relative* predictions across edges:
 
-$$\mathcal{L}_{\text{mesh},i} = \frac{1}{2}\sum_{j \in \mathcal{N}_M(i)} \Big|(\hat{\mathbf{a}}_i - \hat{\mathbf{a}}_j) - (\mathbf{a}_i - \mathbf{a}_j)\Big|$$
+$$\mathcal{L}\_{\text{mesh},i} = \frac{1}{2}\sum\_{j \in \mathcal{N}\_M(i)} \left\lvert(\hat{\mathbf{a}}\_i - \hat{\mathbf{a}}\_j) - (\mathbf{a}\_i - \mathbf{a}\_j)\right\rvert$$
 
-$$\mathcal{L}_{\text{world},i} = \frac{1}{2}\sum_{j \in \mathcal{N}_W(i)} \Big|(\hat{\mathbf{a}}_i - \hat{\mathbf{a}}_j) - (\mathbf{a}_i - \mathbf{a}_j)\Big|$$
+$$\mathcal{L}\_{\text{world},i} = \frac{1}{2}\sum\_{j \in \mathcal{N}\_W(i)} \left\lvert(\hat{\mathbf{a}}\_i - \hat{\mathbf{a}}\_j) - (\mathbf{a}\_i - \mathbf{a}\_j)\right\rvert$$
 
 **Combined:**
 
-$$\mathcal{L} = \frac{1}{|\mathcal{A}|}\sum_{i \in \mathcal{A}} \Big(\mathcal{L}_{\text{node},i} + 0.5\,\mathcal{L}_{\text{mesh},i} + 0.5\,\mathcal{L}_{\text{world},i}\Big)$$
+$$\mathcal{L} = \frac{1}{\lvert\mathcal{A}\rvert}\sum_{i \in \mathcal{A}} \left(\mathcal{L}_{\text{node},i} + 0.5\,\mathcal{L}_{\text{mesh},i} + 0.5\,\mathcal{L}_{\text{world},i}\right)$$
 
 where $\mathcal{A}$ is the set of active (non-fixed, non-impactor) nodes. During training, a **node-level loss mask** further subsamples: all high-acceleration nodes are included, plus a random subset of quiet nodes — focusing gradient signal on the sparse, bursty events that dominate quasistatic crush.
 
@@ -137,9 +137,9 @@ An optional **element-based Ogden physics loss** (see [Material Model](#material
 
 The agent controls the 2D positions of $K$ Voronoi seed points that define a crush structure's internal geometry. At each episode step $t$, the agent observes:
 
-$$\mathbf{s}_t = \Big[\;\underbrace{\tilde{\mathbf{p}}_1, \ldots, \tilde{\mathbf{p}}_K}_{\text{normalized coords}}\;\Big\|\;\underbrace{\mathbf{T}(\mathbf{p})}_{\text{Voronoi topology}}\;\Big\|\;\underbrace{\text{CFE}_t}_{\text{current score}}\;\Big]$$
+$$\mathbf{s}_t = \left[\ \underbrace{\tilde{\mathbf{p}}_1, \ldots, \tilde{\mathbf{p}}_K}_{\text{normalized coords}},\ \underbrace{\mathbf{T}(\mathbf{p})}_{\text{Voronoi topology}},\ \underbrace{\text{CFE}_t}_{\text{current score}}\ \right]$$
 
-The topology feature $\mathbf{T}$ encodes per-seed-pair geometric relationships extracted from the Voronoi diagram: $[|dx|/B,\; |dy|/B,\; \ell_{\text{edge}}/B]$ for neighboring pairs (zero for non-neighbors), where $B$ is the box size. This is flattened to a $K^2 \times 3$ vector.
+The topology feature $\mathbf{T}$ encodes per-seed-pair geometric relationships extracted from the Voronoi diagram: $[\lvert dx\rvert/B,\ \lvert dy\rvert/B,\ \ell_{\text{edge}}/B]$ for neighboring pairs (zero for non-neighbors), where $B$ is the box size. This is flattened to a $K^2 \times 3$ vector.
 
 The action $\mathbf{a}_t \in \mathbb{R}^{2K}$ is a displacement applied to each seed. The reward is the change in CFE:
 
@@ -155,15 +155,15 @@ $$\boldsymbol{\mu}, \boldsymbol{\sigma} = \pi_\theta(\mathbf{s}), \quad u \sim \
 
 The log-probability must account for the change-of-variables Jacobian. For a scalar action dimension $d$:
 
-$$\log \pi_\theta(a_d \mid \mathbf{s}) = \log \mathcal{N}(u_d \mid \mu_d, \sigma_d^2) \;-\; \log\!\big(1 - \tanh^2(u_d)\big) \;-\; \log(a_{\max})$$
+$$\log \pi_\theta(a_d \mid \mathbf{s}) = \log \mathcal{N}(u_d \mid \mu_d, \sigma_d^2) - \log\left(1 - \tanh^2(u_d)\right) - \log(a_{\max})$$
 
 The first correction comes from the derivative of $\tanh$:
 
-$$\frac{da}{du} = (1 - \tanh^2(u)) \cdot a_{\max} \quad \Longrightarrow \quad \log\left|\frac{da}{du}\right| = \log(1 - \tanh^2(u)) + \log(a_{\max})$$
+$$\frac{da}{du} = (1 - \tanh^2(u)) \cdot a_{\max} \quad \Longrightarrow \quad \log\left\lvert\frac{da}{du}\right\rvert = \log(1 - \tanh^2(u)) + \log(a_{\max})$$
 
-Since we need $\log \pi(a) = \log \pi(u) - \log|da/du|$, we subtract both terms. The full multi-dimensional log-probability is:
+Since we need $\log \pi(a) = \log \pi(u) - \log\lvert da/du\rvert$, we subtract both terms. The full multi-dimensional log-probability is:
 
-$$\log \pi_\theta(\mathbf{a} \mid \mathbf{s}) = \sum_{d=1}^{2K} \Big[\log \mathcal{N}(u_d \mid \mu_d, \sigma_d^2) - \log(1 - \tanh^2(u_d)) - \log(a_{\max})\Big]$$
+$$\log \pi_\theta(\mathbf{a} \mid \mathbf{s}) = \sum_{d=1}^{2K} \left[\log \mathcal{N}(u_d \mid \mu_d, \sigma_d^2) - \log(1 - \tanh^2(u_d)) - \log(a_{\max})\right]$$
 
 When re-evaluating a stored action during the PPO update, the raw Gaussian sample is recovered via $u = \text{atanh}(\mathbf{a} / a_{\max})$.
 
@@ -189,9 +189,9 @@ Standard PPO trains the policy and value function simultaneously, which means th
 
 **Phase 1 — Critic fitting** (16 epochs): Fit $V_\phi$ to the GAE returns using clipped Smooth-L1 loss:
 
-$$V_{\text{clip}} = V_{\text{old}} + \text{clamp}\big(V_\phi(\mathbf{s}) - V_{\text{old}},\; -\epsilon,\; +\epsilon\big)$$
+$$V_{\text{clip}} = V_{\text{old}} + \text{clamp}\left(V_\phi(\mathbf{s}) - V_{\text{old}},\ -\epsilon,\ +\epsilon\right)$$
 
-$$\mathcal{L}_V = \frac{1}{|\mathcal{B}|}\sum_{i \in \mathcal{B}} \max\!\Big(\text{SmoothL1}\big(V_\phi(\mathbf{s}_i),\, G_i\big),\;\text{SmoothL1}\big(V_{\text{clip},i},\, G_i\big)\Big)$$
+$$\mathcal{L}_V = \frac{1}{\lvert\mathcal{B}\rvert}\sum_{i \in \mathcal{B}} \max\left(\text{SmoothL1}\left(V_\phi(\mathbf{s}_i),\ G_i\right),\ \text{SmoothL1}\left(V_{\text{clip},i},\ G_i\right)\right)$$
 
 **Phase 2 — Advantage recomputation**: With the critic now fitted, recompute advantages using the updated value function and normalize:
 
@@ -201,11 +201,11 @@ $$\hat{A}_i^{\text{refined}} = G_i - V_\phi(\mathbf{s}_i), \qquad \hat{A}_i^{\te
 
 $$r_t(\theta) = \frac{\pi_\theta(\mathbf{a}_t \mid \mathbf{s}_t)}{\pi_{\theta_{\text{old}}}(\mathbf{a}_t \mid \mathbf{s}_t)}$$
 
-$$\mathcal{L}_\pi = -\frac{1}{|\mathcal{B}|}\sum_{i \in \mathcal{B}} \min\!\Big(r_i\,\hat{A}_i^{\text{norm}},\;\text{clamp}(r_i, 1{-}\epsilon, 1{+}\epsilon)\,\hat{A}_i^{\text{norm}}\Big) \;-\; c_H \cdot \bar{H}[\pi_\theta]$$
+$$\mathcal{L}\_\pi = -\frac{1}{\lvert\mathcal{B}\rvert}\sum\_{i \in \mathcal{B}} \min\left(r\_i \hat{A}\_i^{\text{norm}},\ \text{clamp}(r\_i, 1{-}\epsilon, 1{+}\epsilon)\ \hat{A}\_i^{\text{norm}}\right) - c\_H \cdot \bar{H}[\pi\_\theta]$$
 
 **Optimizer resets**: At the start of each phase, Adam's momentum buffers $(m, v)$ and step counter are zeroed. This prevents stale gradient statistics from a previous landscape from biasing the current optimization. Within each phase, learning rate follows a cosine anneal:
 
-$$\eta(k) = \eta_{\text{base}} \cdot \Big[0.1 + 0.9 \cdot \tfrac{1 + \cos(\pi k / K)}{2}\Big]$$
+$$\eta(k) = \eta_{\text{base}} \cdot \left[0.1 + 0.9 \cdot \tfrac{1 + \cos(\pi k / K)}{2}\right]$$
 
 ---
 
@@ -213,7 +213,7 @@ $$\eta(k) = \eta_{\text{base}} \cdot \Big[0.1 + 0.9 \cdot \tfrac{1 + \cos(\pi k 
 
 Both stages use a two-term incompressible **Ogden hyperelastic** model calibrated for TPU (thermoplastic polyurethane). The 2D plane-stress strain energy density is:
 
-$$W(\lambda_1, \lambda_2) = \sum_{p=1}^{2} \frac{\mu_p}{\alpha_p}\Big(\lambda_1^{\alpha_p} + \lambda_2^{\alpha_p} + (\lambda_1 \lambda_2)^{-\alpha_p} - 3\Big)$$
+$$W(\lambda_1, \lambda_2) = \sum_{p=1}^{2} \frac{\mu_p}{\alpha_p}\left(\lambda_1^{\alpha_p} + \lambda_2^{\alpha_p} + (\lambda_1 \lambda_2)^{-\alpha_p} - 3\right)$$
 
 where the third stretch $\lambda_3 = (\lambda_1 \lambda_2)^{-1}$ enforces incompressibility. Principal stretches $\lambda_1, \lambda_2$ are extracted from the right Cauchy-Green tensor $\mathbf{C} = \mathbf{F}^\top \mathbf{F}$, where $\mathbf{F}$ is the 2D deformation gradient computed per triangle element.
 
@@ -472,6 +472,6 @@ If you use this code in your research, please cite:
   author    = {Vijay},
   title     = {NeuralCrush: Graph Neural Network Surrogate and RL Optimization for Crashworthiness Design},
   year      = {2026},
-  url       = {https://github.com/atomic-coder/NeuralCrush}
+  url       = {https://github.com/YOUR_USERNAME/NeuralCrush}
 }
 ```
