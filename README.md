@@ -69,7 +69,7 @@ where $\mathbf{f}_i \in \{0,1\}^3$ encodes `[is_impactor, is_absorber, is_fixed]
 The network consists of $L = 15$ stacked interaction blocks followed by a decoder MLP that outputs predicted acceleration $\hat{\mathbf{a}}_i \in \mathbb{R}^2$.
 
 <p align="center">
-  <img src="assets/MGN_architecture.png" alt="MGN Architecture" width="700"/>
+  <img src="assets/MGN_architecture.png" alt="MGN Architecture" width="900"/>
 </p>
 
 ### Gated Message Passing
