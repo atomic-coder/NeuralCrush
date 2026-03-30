@@ -361,28 +361,41 @@ The `DataFormatter` discovers all `.pt` files in the specified directory, filter
 ---
 
 ## Results
-
-<!-- 
-Add your results here. Suggested figures:
-
-1. MGN rollout animation (mesh deformation + force-displacement curve)
-![Rollout](assets/rollout_animation.gif)
-
-2. Training loss curves (kinematic + physics)
-![Training](assets/training_curves.png)
-
-3. RL optimization: seed points moving over episodes
-![RL Optimization](assets/rl_seed_optimization.gif)
-
-4. 1D vs 2D Ogden comparison from sensitivity test
-![1D vs 2D](assets/force_comparison_summary.png)
-
-5. CFE improvement: optimized vs random baseline
-![CFE Comparison](assets/rl_eval_comparison.png)
--->
-
-*Results figures to be added.*
-
+ 
+### Surrogate Rollout
+ 
+The trained MeshGraphNet predicts mesh deformation autoregressively — each frame's output becomes the next frame's input. The left panel shows the predicted node positions with contact edges highlighted in red. The right panel shows the force-displacement curve derived from strain energy.
+ 
+<p align="center">
+  <img src="assets/rollout_animation.gif" alt="MGN Rollout Animation" width="800"/>
+</p>
+<p align="center"><em>Autoregressive rollout on a held-out test structure. 300 frames predicted from a single initial condition.</em></p>
+ 
+Ground truth reaction force from COMSOL for the same simulation, measured at the fixed boundary:
+ 
+<p align="center">
+  <img src="assets/reaction_force_comparison.png" alt="Ground Truth Reaction Force" width="600"/>
+</p>
+<p align="center"><em>FEA ground truth — Reaction force (Y-component) at the fixed boundary over the full crush sequence.</em></p>
+ 
+---
+ 
+### RL Optimization
+ 
+The PPG agent takes sequential actions to move Voronoi seed points, generating a new structure at each step. Each candidate is evaluated by running a full surrogate rollout and computing Crush Force Efficiency from the resulting force-displacement curve.
+ 
+<p align="center">
+  <img src="assets/PPG_optimization_5_seeds.gif" alt="PPG Seed Optimization" width="800"/>
+</p>
+<p align="center"><em>5-seed Voronoi optimization over 30 episode steps. The agent learns to spread seeds to create more uniform load paths.</em></p>
+ 
+Force-displacement curve of the optimized structure:
+ 
+<p align="center">
+  <img src="assets/cfe_optimized_force_curve.png" alt="Optimized Force Curve" width="600"/>
+</p>
+<p align="center"><em>Force-displacement response of the agent's best structure. A flatter curve indicates higher CFE.</em></p>
+ 
 ---
 
 ## Project Structure
