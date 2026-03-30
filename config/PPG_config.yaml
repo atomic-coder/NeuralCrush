@@ -1,0 +1,85 @@
+# =========================================================
+# PPO + CRUSH OPTIMIZATION CONFIG (EPISODIC)
+# =========================================================
+
+mode: train  # [train, eval]
+
+# ---------------------------------------------------------
+# PPO HYPERPARAMETERS
+# ---------------------------------------------------------
+ppo:
+  num_seeds: 5            # Voronoi seed points per structure
+  batch_size: 128           # Environments running in parallel
+  collect_batches: 1     # Number of batch rollouts to collect before updating
+  num_iterations: 50     # Outer training iterations
+  value_epochs: 16
+  policy_epochs: 8   # Inner PPO epochs per collected batch
+  mini_batch_size: 16     # Mini-batch size for PPO updates
+
+  # --- NEW: EPISODIC RL PARAMETERS ---
+  episode_max_steps: 30   # Sequential actions the agent takes per environment
+  gamma: 0.99             # Discount factor for future rewards
+  gae_lambda: 0.90        # GAE smoothing parameter for advantage estimation
+
+  clip_epsilon: 0.2
+  lr_policy: 3.0e-4 
+  lr_value: 1.0e-3
+  entropy_coeff: 0.001
+  value_coeff: 0.5
+  max_grad_norm: 0.5
+
+  # Action space: max displacement per seed per step (mm, in BOX_SIZE units)
+  max_action: 5.0
+  seed_margin: 3.0        # Keep seeds at least this far from box edges
+
+  mesh_fail_penalty: -1.0 # Huber-shielded penalty for failed meshes
+
+  # Policy / Value network
+  hidden_dim: 128
+  num_hidden_layers: 2
+
+  # Logging
+  log_interval: 1
+  save_interval: 25
+  checkpoint_dir: "checkpoints"
+
+# ---------------------------------------------------------
+# MGN ROLLOUT (Frozen surrogate)
+# ---------------------------------------------------------
+rollout:
+  num_steps: 139
+  time_step: 1.0e-2
+  impactor_vel: -0.005    # m/s downward
+  world_edge_interval: 2  # Rebuild contact edges every N steps
+  device: "mps"          # cuda / mps / cpu
+
+# ---------------------------------------------------------
+# MGN MODEL (Frozen weights — not trained here)
+# ---------------------------------------------------------
+mgn:
+  checkpoint: "checkpoints/latest_model.pth"
+  spatial_dim: 2
+  node_in_dim: 8
+  mesh_edge_in_dim: 8
+  world_edge_in_dim: 4
+  hidden_dim: 128
+  output_dim: 2
+  num_layers: 15
+  radius: 3.0e-3
+
+# ---------------------------------------------------------
+# MESH GENERATION
+# ---------------------------------------------------------
+mesh:
+  num_workers: 1          # CPU cores for parallel gmsh
+
+# ---------------------------------------------------------
+# MATERIAL MODEL (Ogden — for strain energy / CFE)
+# ---------------------------------------------------------
+material:
+  mu: [11.5138e+6, -0.33239e+6]
+  alpha: [1.457, -7.8825]
+  rho_tpu: 1210.0        # kg/m^3
+
+inference:
+  steps: 80

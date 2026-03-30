@@ -1,0 +1,96 @@
+# -------------------------------------------------------------------------
+# GLOBAL CONFIGURATION
+# -------------------------------------------------------------------------
+# Default execution mode. Can be overridden by CLI (e.g., python main.py --mode rollout)
+mode: train  # Options: [train, eval, rollout]
+
+# -------------------------------------------------------------------------
+# DATASET PATHS & PARAMETERS
+# -------------------------------------------------------------------------
+data:
+  # Explicit paths to your pre-split data folders
+  train_path: '/workspace/data/train'
+  val_path:   '/workspace/data/val'
+  test_path:  '/workspace/data/rollout'  # Used for evaluation and as start point for rollouts
+  rollout_dir: 'output/rollouts'         # Where simulation results (.npy) are saved
+
+
+# -------------------------------------------------------------------------
+# MODEL ARCHITECTURE (MeshGraphNet - 2D Configuration)
+# -------------------------------------------------------------------------
+model:
+  # Tell the network we are in 2D space
+  spatial_dim: 2
+
+  # Input Dimensions (Matched for 2D data_formatter)
+  # 8 = prev_vel (2) + curr_vel (2) + Node Flags (4:Inv_mass, Impactor, Absorber, Fixed)
+  node_in_dim: 8
+  
+  # 4 = Strain Vector (2) + Relative Velocity (2)
+  mesh_edge_in_dim: 8
+
+  # 4 = Relative Position (2) + Relative Velocity (2)
+  world_edge_in_dim: 4
+  
+  hidden_dim: 128
+  
+  # Output Dimensions acc x & y
+  output_dim: 2
+  
+  # Depth of the GNN. DeepMind uses 15.
+  num_layers: 15
+
+  # Edge radius for graph construction. Adjust based on mesh density. (in m)
+  radius: 3.0e-3
+
+  compile_model: true 
+
+# -------------------------------------------------------------------------
+# TRAINING HYPERPARAMETERS
+# -------------------------------------------------------------------------
+train:
+  resume_path: 'checkpoints/latest_model.pth' 
+  resume_epoch: 0
+  recalibrate_normalizers: true 
+  epochs: 32
+  learning_rate: 1.0e-4
+  
+  batch_size: 1         
+  target_batch_size: 1
+  num_workers: 0 
+
+  input_noise_std: 1.0e-5
+  input_noise_gamma: 0.1
+  time_step: 1.0e-2
+
+
+  # Set based on your simulation characteristics.
+  sample_frames: false
+  accel_threshold: 0.0002
+  high_frame_ratio: 0.4
+  low_node_sample_count: 200
+  # Computation Device: "cuda" (Nvidia), "mps" (Mac), or "cpu"
+  device: "cuda" 
+
+# -------------------------------------------------------------------------
+# LOGGING & CHECKPOINTS
+# -------------------------------------------------------------------------
+logging:
+  checkpoint_dir: "checkpoints"
+  save_frequency: 5
+
+# -------------------------------------------------------------------------
+# ROLLOUT / SIMULATION SETTINGS
+# -------------------------------------------------------------------------
+rollout:
+  checkpoint_path: "checkpoints/latest_model.pth"
+  
+  # Simulation duration
+  num_steps: 299   # How many frames to auto-regressively predict
+  
+  # Physics Time Step (dt)
+  # CRITICAL: This MUST match the delta_t used to generate your training data.
+  time_step: 1.0e-2
+  
+  # Visualization
+  auto_plot: true

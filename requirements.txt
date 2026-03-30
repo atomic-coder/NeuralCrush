@@ -1,0 +1,19 @@
+# --- Deep Learning Core ---
+torch
+torch-geometric
+
+# --- GNN Acceleration (Crucial for radius_graph) ---
+torch-cluster --no-build-isolation
+torch-scatter --no-build-isolation
+
+# --- Data & Math ---
+numpy
+scipy
+pandas
+
+# --- Utilities ---
+tqdm
+PyYAML
+
+# --- Visualization ---
+matplotlib
