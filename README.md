@@ -374,7 +374,7 @@ The trained MeshGraphNet predicts mesh deformation autoregressively — each fra
 Ground truth reaction force from COMSOL for the same simulation, measured at the fixed boundary:
  
 <p align="center">
-  <img src="assets/reaction_force_comparison.png" alt="Ground Truth Reaction Force" width="600"/>
+  <img src="assets/reaction_force_for_rollout_animation_comparison.png" alt="Ground Truth Reaction Force" width="600"/>
 </p>
 <p align="center"><em>FEA ground truth — Reaction force (Y-component) at the fixed boundary over the full crush sequence.</em></p>
  
