@@ -420,6 +420,8 @@ NeuralCrush/
 
 ## Installation & Usage
 
+**Hardware Requirements:** Training the MGN surrogate and running the parallel RL environments requires a CUDA-enabled GPU (Minimum 8GB VRAM recommended) and at least 16GB of system RAM.
+
 ```bash
 pip install -r requirements.txt
 ```
