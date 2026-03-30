@@ -171,7 +171,7 @@ When re-evaluating a stored action during the PPO update, the raw Gaussian sampl
 
 Advantages are computed via Generalized Advantage Estimation over the episode:
 
-$$\delta_t = r_t + \gamma\(1 - d_t)\V_\phi(\mathbf{s}_{t+1}) - V_\phi(\mathbf{s}_t)$$
+$$\delta_t = r_t + \gamma\(1 - d_t) V_\phi(\mathbf{s}_{t+1}) - V_\phi(\mathbf{s}_t)$$
 
 $$\hat{A}_t = \sum_{k=0}^{T-t-1} (\gamma \lambda)^k \(1 - d_{t+k})\ \delta_{t+k}$$
 
