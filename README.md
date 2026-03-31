@@ -212,20 +212,16 @@ $$\mathcal{L}_\pi = -\frac{1}{\lvert\mathcal{B}\rvert}\sum_{i \in \mathcal{B}} \
 
 An important subtlety arises here. The Jacobian correction from the tanh squashing **cancels in the probability ratio** — both numerator and denominator are evaluated at the same stored action $\mathbf{a}$, so the $\lvert da/du \rvert^{-1}$ factors divide out and the policy gradient is unaffected.
 
-The **entropy term**, however, does not benefit from this cancellation. The entropy bonus $\bar{H}_a$ is meant to measure how spread out the policy's action distribution is and penalize collapse. If we naively use the Gaussian entropy $H[\mathcal{N}(\mu, \sigma^2)]$, we overestimate exploration — because $\tanh$ compresses the tails, actions near $\pm a_{\max}$ get squished together in a way the Gaussian doesn't see. The correct action-space entropy accounts for this compression:
+The entropy term, however, does not benefit from this cancellation. The entropy bonus H_a is meant to measure how spread out the policy's action distribution is and penalize collapse. If we naively use the Gaussian entropy H[N(μ, σ²)], we overestimate exploration — because tanh compresses the tails, actions near ±a_max get squished together in a way the Gaussian doesn't see. The correct action-space entropy accounts for this compression:
 
 $$H_a[\pi_\theta] = H[\mathcal{N}(\mu, \sigma^2)] + \mathbb{E}_u\left[\sum_{d=1}^{D} \log\left(1 - \tanh^2(u_d)\right)\right] + D \cdot \log(a_{\max})$$
 
 The middle term is always negative and grows in magnitude as actions approach the boundaries — precisely the regime where the policy is collapsing to deterministic. Without this correction, the entropy bonus thinks the policy is still exploring when it has already converged, and the coefficient $c_H$ cannot intervene in time.
 
-***
-
 **Implementation Note: Numerical Stability (The Softplus Trick)**
 While the analytical Jacobian $\log(1 - \tanh^2(u))$ is mathematically exact, it is a numerical hazard in `float32`. If the network outputs a large raw action (e.g., $|u| > 4$), the $\tanh$ function rounds to exactly $1.0$, causing the correction term to evaluate to $\log(0)$ and instantly flood the network with `NaN` gradients. To prevent this, the codebase computes this term using its mathematically identical `softplus` formulation:
 $$2(\log(2) - |u| - \text{softplus}(-2|u|))$$
 This reformulation never subtracts from $1.0$ and gracefully yields a stable linear penalty of $-2|u|$ for large inputs, ensuring the gradients never collapse even at extreme boundary saturation.
-
-***
 
 **Optimizer management.** At the start of each phase, Adam's momentum buffers $(m, v)$ and step counter are reset to zero. This prevents stale gradient statistics accumulated on the previous loss landscape from biasing the current optimization. Within each phase, the learning rate follows a cosine anneal from the base rate down to 10%:
 
