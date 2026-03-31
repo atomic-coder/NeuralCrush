@@ -156,53 +156,53 @@ If meshing fails (invalid geometry), the episode terminates with a penalty $r_t 
 
 ### Squashed Gaussian Policy
 
-The policy outputs a diagonal Gaussian in an unbounded space, then squashes via $\tanh$ to enforce hard action bounds $[-a_{\max}, a_{\max}]$:
+Seed displacements must stay within a bounded box, but the Gaussian distribution that PPO operates on has infinite support. The standard solution is to sample in an unbounded latent space and squash through $\tanh$:
 
 $$\boldsymbol{\mu}, \boldsymbol{\sigma} = \pi_\theta(\mathbf{s}), \quad u \sim \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\sigma}^2), \quad \mathbf{a} = \tanh(u) \cdot a_{\max}$$
 
-The log-probability must account for the change-of-variables Jacobian. For a scalar action dimension $d$:
+This guarantees $\mathbf{a} \in [-a_{\max}, a_{\max}]$ by construction. The cost is that computing the density $\pi_\theta(\mathbf{a} \mid \mathbf{s})$ now requires a change-of-variables correction. The derivative of the squashing function is:
+
+$$\frac{da}{du} = (1 - \tanh^2(u)) \cdot a_{\max}$$
+
+Applying the change-of-variables formula $\log \pi(a) = \log p(u) - \log \lvert da/du \rvert$ gives the corrected log-probability per dimension:
 
 $$\log \pi_\theta(a_d \mid \mathbf{s}) = \log \mathcal{N}(u_d \mid \mu_d, \sigma_d^2) - \log\left(1 - \tanh^2(u_d)\right) - \log(a_{\max})$$
 
-The first correction comes from the derivative of $\tanh$:
-
-$$\frac{da}{du} = (1 - \tanh^2(u)) \cdot a_{\max} \quad \Longrightarrow \quad \log\left\lvert\frac{da}{du}\right\rvert = \log(1 - \tanh^2(u)) + \log(a_{\max})$$
-
-Since we need $\log \pi(a) = \log \pi(u) - \log\lvert da/du\rvert$, we subtract both terms. The full multi-dimensional log-probability is:
+Summed across all $2K$ action dimensions:
 
 $$\log \pi_\theta(\mathbf{a} \mid \mathbf{s}) = \sum_{d=1}^{2K} \left[\log \mathcal{N}(u_d \mid \mu_d, \sigma_d^2) - \log(1 - \tanh^2(u_d)) - \log(a_{\max})\right]$$
 
-When re-evaluating a stored action during the PPO update, the raw Gaussian sample is recovered via $u = \text{atanh}(\mathbf{a} / a_{\max})$.
+During the PPO update, we need to re-evaluate the log-probability of a previously stored action under the current policy. Since the stored action lives in the squashed space, we invert: $u = \text{atanh}(\mathbf{a} / a_{\max})$, then evaluate with the same correction above.
 
-### GAE and Returns
+### Advantage Estimation
 
-Advantages are computed via Generalized Advantage Estimation over the episode:
+Once an episode of experience is collected, we estimate advantages using GAE. The TD residual at each step is:
 
-$$\delta_t = r_t + \gamma\(1 - d_t) V_\phi(\mathbf{s}_{t+1}) - V_\phi(\mathbf{s}_t)$$
+$$\delta_t = r_t + \gamma\,(1 - d_t)\,V_\phi(\mathbf{s}_{t+1}) - V_\phi(\mathbf{s}_t)$$
 
-$$\hat{A}_t = \sum_{k=0}^{T-t-1} (\gamma \lambda)^k \(1 - d_{t+k})\ \delta_{t+k}$$
+These are smoothed into advantage estimates via the backward recursion:
 
-implemented as the backward recursion:
+$$\hat{A}_t = \delta_t + \gamma \lambda \,(1 - d_t)\, \hat{A}_{t+1}$$
 
-$$\hat{A}_t = \delta_t + \gamma \lambda \(1 - d_t)\ \hat{A}_{t+1}$$
-
-Returns for the value function target:
-
-$$G_t = \hat{A}_t + V_\phi(\mathbf{s}_t)$$
+where $\gamma = 0.99$ controls the discount horizon and $\lambda = 0.90$ controls the bias-variance tradeoff. The value function targets are then $G_t = \hat{A}_t + V_\phi(\mathbf{s}_t)$.
 
 ### Phasic Update
 
-Standard PPO trains the policy and value function simultaneously, which means the policy's advantage estimates are computed against a value function that's still changing underneath it. This implementation separates them into phases:
+In standard PPO, the policy and value function are updated simultaneously. This means the advantages used to update the policy are computed against a value function that is itself changing — a moving target that introduces noise into the gradient. This implementation decouples the two updates into three phases.
 
-**Phase 1 — Critic fitting** (16 epochs): Fit $V_\phi$ to the GAE returns using clipped Smooth-L1 loss:
+**Phase 1 — Fit the critic** (16 epochs). The value network is trained against the GAE returns using a clipped Smooth-L1 loss:
 
 $$V_{\text{clip}} = V_{\text{old}} + \text{clamp}\left(V_\phi(\mathbf{s}) - V_{\text{old}},\ -\epsilon,\ +\epsilon\right)$$
 
 $$\mathcal{L}_V = \frac{1}{\lvert\mathcal{B}\rvert}\sum_{i \in \mathcal{B}} \max\left(\text{SmoothL1}\left(V_\phi(\mathbf{s}_i),\ G_i\right),\ \text{SmoothL1}\left(V_{\text{clip},i},\ G_i\right)\right)$$
 
-**Phase 2 — Advantage recomputation**: With the critic now fitted, recompute advantages using the updated value function and normalize:
+The clipping prevents the value function from overshooting on any single update, and Smooth-L1 (Huber loss) reduces sensitivity to outlier returns from failed meshes.
+
+**Phase 2 — Recompute advantages**. With the critic now settled, we recompute advantages using the fitted value function and normalize them to zero mean and unit variance:
 
 $$\hat{A}_i^{\text{refined}} = G_i - V_\phi(\mathbf{s}_i), \qquad \hat{A}_i^{\text{norm}} = \frac{\hat{A}_i^{\text{refined}} - \mu_{\hat{A}}}{\sigma_{\hat{A}} + 10^{-8}}$$
+
+This is the key step that makes the approach "phasic" — the policy will optimize against stable, high-quality advantage estimates rather than estimates that are stale or drifting.
 
 **Phase 3 — Update the policy** (8 epochs). The policy is updated using the standard PPO clipped surrogate, with an entropy bonus to encourage exploration:
 
@@ -212,7 +212,7 @@ $$\mathcal{L}_\pi = -\frac{1}{\lvert\mathcal{B}\rvert}\sum_{i \in \mathcal{B}} \
 
 An important subtlety arises here. The Jacobian correction from the tanh squashing **cancels in the probability ratio** — both numerator and denominator are evaluated at the same stored action $\mathbf{a}$, so the $\lvert da/du \rvert^{-1}$ factors divide out and the policy gradient is unaffected.
 
-The entropy term, however, does not benefit from this cancellation. The entropy bonus H_a is meant to measure how spread out the policy's action distribution is and penalize collapse. If we naively use the Gaussian entropy H[N(μ, σ²)], we overestimate exploration — because tanh compresses the tails, actions near ±a_max get squished together in a way the Gaussian doesn't see. The correct action-space entropy accounts for this compression:
+The **entropy term**, however, does not benefit from this cancellation. The entropy bonus `H_a` is meant to measure how spread out the policy's action distribution is and penalize collapse. If we naively use the Gaussian entropy `H[N(μ, σ²)]`, we overestimate exploration — because `tanh` compresses the tails, actions near `±a_max` get squished together in a way the Gaussian doesn't see. The correct action-space entropy accounts for this compression:
 
 $$H_a[\pi_\theta] = H[\mathcal{N}(\mu, \sigma^2)] + \mathbb{E}_u\left[\sum_{d=1}^{D} \log\left(1 - \tanh^2(u_d)\right)\right] + D \cdot \log(a_{\max})$$
 
@@ -228,7 +228,6 @@ This reformulation never subtracts from $1.0$ and gracefully yields a stable lin
 $$\eta(k) = \eta_{\text{base}} \cdot \left[0.1 + 0.9 \cdot \tfrac{1 + \cos(\pi k / K)}{2}\right]$$
 
 This gives large steps early in each phase for broad exploration of the loss surface, tapering to fine adjustments as the phase ends.
-
 ---
 
 ## Material Model
