@@ -393,7 +393,7 @@ The trained MeshGraphNet predicts mesh deformation autoregressively — each fra
 Ground truth reaction force from COMSOL for the same simulation, measured at the fixed boundary:
  
 <p align="center">
-  <img src="assets/reaction_force_for_rollout_animation_comparison.png" alt="Ground Truth Reaction Force" width="600"/>
+  <img src="assets/reaction_force_for_rollout_animation_comparison.png" alt="Ground Truth Reaction Force" width="800"/>
 </p>
 <p align="center"><em>FEA ground truth — Reaction force (Y-component) at the fixed boundary over the full crush sequence.</em></p>
  
@@ -411,7 +411,7 @@ The PPG agent takes sequential actions to move Voronoi seed points, generating a
 Validation Force-displacement curve of the optimized structure:
  
 <p align="center">
-  <img src="assets/cfe_optimized_force_curve.png" alt="Optimized Force Curve" width="600"/>
+  <img src="assets/cfe_optimized_force_curve.png" alt="Optimized Force Curve" width="800"/>
 </p>
 <p align="center"><em>Force-displacement response of the agent's best structure (CFE = 0.725). A flatter curve indicates higher CFE.</em></p>
  
