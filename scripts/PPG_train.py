@@ -12,7 +12,6 @@ from scipy.spatial import Voronoi
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 
-# Assuming these are in your Python path
 from src.model import MeshGraphNet
 from src.data_formatter import MeshData as Data
 from tools.utils import build_world_edges
@@ -30,16 +29,13 @@ def save_episode_video(seeds_sequence, iteration, save_dir, status="unknown", bo
         ax.clear()
         ax.set_xlim(0, box_size)
         ax.set_ylim(0, box_size)
-        # Add the status to the video title so you know what you are looking at
         ax.set_title(f"Iter {iteration} | Step {frame} | {status.upper()}")
         ax.set_aspect('equal')
         
         seeds = seeds_sequence[frame]
         
-        # Plot Seeds
         ax.scatter(seeds[:, 0], seeds[:, 1], c='red', s=50, zorder=5, label='Seeds')
         
-        # Plot Voronoi Structure bounded by the box
         dummies = np.array([[-500, -500], [box_size+500, -500], 
                             [box_size+500, box_size+500], [-500, box_size+500]])
         all_pts = np.vstack([seeds, dummies])
@@ -54,7 +50,6 @@ def save_episode_video(seeds_sequence, iteration, save_dir, status="unknown", bo
             pass
 
     ani = FuncAnimation(fig, update, frames=len(seeds_sequence))
-    # Tag the filename so you can easily sort the folder by failures vs successes
     save_path = os.path.join(save_dir, f"episode_iter_{iteration}_{status}_{int(time.time())}.gif")
     ani.save(save_path, writer=PillowWriter(fps=1/0.3))
     plt.close(fig)
@@ -408,10 +403,24 @@ class PolicyNetwork(nn.Module):
 
     def forward(self, obs):
         h = self.backbone(obs)
-        # RAW mean. Do not squash here, or the added noise will exceed bounds.
         mean = self.mean_head(h)
         std = self.log_std.exp().expand_as(mean)
         return mean, std
+
+    @staticmethod
+    def _stable_log_squash(u):
+        """
+        Compute log(1 - tanh²(u)) without ever calling tanh.
+        
+        Uses the identity: 1 - tanh²(u) = sech²(u) = 1/cosh²(u)
+          log(1 - tanh²(u)) = -2·log(cosh(u))
+                             = 2·log(2) - 2|u| - 2·softplus(-2|u|)
+        
+        This is numerically stable for all u. The naive implementation
+        tanh(u) → square → subtract from 1 → log saturates to a flat
+        plateau with zero gradient for |u| > ~4 in float32.
+        """
+        return 2 * np.log(2) - 2 * u.abs() - 2 * torch.nn.functional.softplus(-2 * u.abs())
 
     def get_action(self, obs, deterministic=False):
         mean, std = self.forward(obs)
@@ -425,16 +434,16 @@ class PolicyNetwork(nn.Module):
         # 1. Squash the action to guarantee absolute bounds
         action = torch.tanh(u) * self.max_action
 
-        # 2. Compute raw log probability
-        log_prob = dist.log_prob(u)
-
-        # 3. Enforce Jacobian correction for the Tanh boundary 
-        epsilon = 1e-6
-        squash_correction = torch.log(1 - torch.tanh(u)**2 + epsilon)
-        log_prob = log_prob - squash_correction - np.log(self.max_action)
-        
+        # 2. Log-probability with Jacobian correction
+        squash_correction = self._stable_log_squash(u)
+        log_prob = dist.log_prob(u) - squash_correction - np.log(self.max_action)
         log_prob = log_prob.sum(dim=-1)
-        entropy = dist.entropy().sum(dim=-1)
+
+        # 3. Action-space entropy: H[a] = H[N(μ,σ²)] + E[Σ log(1 - tanh²(u))] + D·log(a_max)
+        #    The Jacobian cancels in the PPO ratio, but the entropy bonus must
+        #    reflect the true action-space distribution to prevent premature collapse.
+        gaussian_entropy = dist.entropy()  # [B, D]
+        entropy = (gaussian_entropy + squash_correction).sum(dim=-1) + np.log(self.max_action) * u.shape[-1]
         
         return action, log_prob, entropy
 
@@ -442,19 +451,35 @@ class PolicyNetwork(nn.Module):
         mean, std = self.forward(obs)
         dist = torch.distributions.Normal(mean, std)
 
-        # 1. Recover the raw Gaussian sample (u) by reversing the Tanh
+        # 1. Recover the raw Gaussian sample (u) by reversing the Tanh.
+        #    This u is DETACHED — the stored action has no connection to θ.
         epsilon = 1e-6
         action_normalized = action / self.max_action
         action_normalized = torch.clamp(action_normalized, -1.0 + epsilon, 1.0 - epsilon)
         u = torch.atanh(action_normalized)
 
-        # 2. Recompute log_prob with the exact same Jacobian correction
-        log_prob = dist.log_prob(u)
-        squash_correction = torch.log(1 - action_normalized**2 + epsilon)
-        log_prob = log_prob - squash_correction - np.log(self.max_action)
-        
+        # 2. Log-probability with Jacobian correction.
+        #    The correction cancels in the PPO ratio anyway, but we include it
+        #    for numerical consistency with get_action.
+        squash_correction = self._stable_log_squash(u)
+        log_prob = dist.log_prob(u) - squash_correction - np.log(self.max_action)
         log_prob = log_prob.sum(dim=-1)
-        entropy = dist.entropy().sum(dim=-1)
+
+        # 3. Action-space entropy.
+        #    The stored action is detached (requires_grad=False), so computing
+        #    the squash correction from it yields zero gradient w.r.t. θ — the
+        #    optimizer would only see the Gaussian entropy gradient, making the
+        #    correction cosmetic.
+        #
+        #    To get a gradient that actually reflects tanh compression, we draw
+        #    a fresh sample from the CURRENT policy via the reparameterization
+        #    trick (u = μ + σ·ε). This u depends on θ through μ and σ, so the
+        #    squash correction contributes to the gradient and can push back
+        #    against collapse at the boundaries.
+        u_fresh = dist.rsample()
+        squash_correction_fresh = self._stable_log_squash(u_fresh)
+        gaussian_entropy = dist.entropy()  # [B, D] — analytical, depends on σ_θ
+        entropy = (gaussian_entropy + squash_correction_fresh).sum(dim=-1) + np.log(self.max_action) * action.shape[-1]
         
         return log_prob, entropy
 
@@ -478,7 +503,6 @@ class PPOAgent:
         ppo = config['ppo']
         self.num_seeds = ppo['num_seeds']
         
-        # 8 coordinates + (16 pairs * 3 features) = 56
         obs_dim = (self.num_seeds * 2) + (self.num_seeds ** 2 * 3) + 1
         act_dim = self.num_seeds * 2
 
@@ -492,7 +516,6 @@ class PPOAgent:
         self.opt_policy = torch.optim.Adam(self.policy.parameters(), lr=ppo['lr_policy'])
         self.opt_value = torch.optim.Adam(self.value.parameters(), lr=ppo['lr_value'])
 
-        # Store base LRs for intra-iteration cosine reset
         self.lr_policy_base = ppo['lr_policy']
         self.lr_value_base = ppo['lr_value']
 
@@ -516,19 +539,16 @@ class PPOAgent:
     def propose_seeds(self, base_seeds_np, current_cfe=None, deterministic=False):
         B = base_seeds_np.shape[0]
         
-        # 1. Coordinates (Normalized)
         obs_raw = torch.tensor(base_seeds_np.reshape(B, -1), dtype=torch.float32, device=self.device)
         obs_coords = (obs_raw - BOX_SIZE / 2.0) / (BOX_SIZE / 2.0)
         
-        # 2. Geometric Topology
         topologies = [extract_topology_geometric(base_seeds_np[i], self.num_seeds, BOX_SIZE) for i in range(B)]
         topology_tensor = torch.tensor(np.array(topologies), dtype=torch.float32, device=self.device)
         
-        # 3. Concatenate (Shape becomes [B, 56])
         obs = torch.cat([obs_coords, topology_tensor], dim=1)
 
         if current_cfe is not None:
-            # Normalize: CFE is in [0, 1], center and scale to [-1, 1]
+
             cfe_feat = current_cfe.detach().clone().float().to(self.device)
             if cfe_feat.dim() == 1:
                 cfe_feat = cfe_feat.unsqueeze(1)
@@ -538,7 +558,6 @@ class PPOAgent:
             actions, log_probs, _ = self.policy.get_action(obs, deterministic=deterministic)
             values = self.value(obs)
 
-        # Action is already strictly bounded via Tanh in the PolicyNetwork
         deltas = actions.cpu().numpy().reshape(B, self.num_seeds, 2)
         proposed = np.clip(base_seeds_np + deltas,
                            self.seed_margin, BOX_SIZE - self.seed_margin)
@@ -718,7 +737,6 @@ def run_training(config):
     num_iters = ppo_cfg['num_iterations']
     margin = ppo_cfg['seed_margin']
     mesh_fail_penalty = ppo_cfg.get('mesh_fail_penalty', -1.5)
-    reward_scaling = ppo_cfg.get('reward_scaling', 1.0)
     
     max_steps = ppo_cfg.get('episode_max_steps', 15)
     gamma = ppo_cfg.get('gamma', 0.99)
@@ -734,14 +752,14 @@ def run_training(config):
     if os.path.exists(resume_path):
         try:
             agent.load(resume_path, device)
-            print(f"📂 Resumed from {resume_path}")
+            print(f"Resumed from {resume_path}")
         except RuntimeError:
             print("\nARCHITECTURE MISMATCH: Delete 'latest_policy.pth' and start fresh!")
             return
 
-    print(f"\n   PPO Autoregressive Training: {num_iters} iterations")
+    print(f"\n PPO Autoregressive Training: {num_iters} iterations")
     print(f"   Seeds: {num_seeds} | Env Batch: {batch_size} | Episode Length: {max_steps}")
-    print(f"   Action: ±{ppo_cfg['max_action']} mm | Discount (γ): {gamma} | GAE (λ): {gae_lambda} | Reward Scaling: {reward_scaling}\n")
+    print(f"   Action: ±{ppo_cfg['max_action']} mm | Discount (γ): {gamma} | GAE (λ): {gae_lambda}\n")
 
     best_cfe = 0.0
 
@@ -794,7 +812,7 @@ def run_training(config):
                         if active_mask[i]:
                             if i in step_cfe_map:
                                 new_cfe = step_cfe_map[i]
-                                rewards[i] = (new_cfe - current_cfe[i]) * reward_scaling
+                                rewards[i] = new_cfe - current_cfe[i]
                                 current_cfe[i] = new_cfe
                                 dones[i] = False
                                 current_seeds[i] = proposed_seeds[i] 
