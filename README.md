@@ -218,10 +218,7 @@ $$H_a[\pi_\theta] = H[\mathcal{N}(\mu, \sigma^2)] + \mathbb{E}_u\left[\sum_{d=1}
 
 The middle term is always negative and grows in magnitude as actions approach the boundaries — precisely the regime where the policy is collapsing to deterministic. Without this correction, the entropy bonus thinks the policy is still exploring when it has already converged, and the coefficient $c_H$ cannot intervene in time.
 
-**Implementation Note: Numerical Stability (The Softplus Trick)**
-While the analytical Jacobian $\log(1 - \tanh^2(u))$ is mathematically exact, it is a numerical hazard in `float32`. If the network outputs a large raw action (e.g., $|u| > 4$), the $\tanh$ function rounds to exactly $1.0$, causing the correction term to evaluate to $\log(0)$ and instantly flood the network with `NaN` gradients. To prevent this, the codebase computes this term using its mathematically identical `softplus` formulation:
-$$2(\log(2) - |u| - \text{softplus}(-2|u|))$$
-This reformulation never subtracts from $1.0$ and gracefully yields a stable linear penalty of $-2|u|$ for large inputs, ensuring the gradients never collapse even at extreme boundary saturation.
+> **Numerical note:** The naive $\log(1 - \tanh^2(u))$ saturates to $\log(0)$ for $\lvert u \rvert > 4$ in float32. The codebase uses the equivalent identity $2(\log 2 - \lvert u \rvert - \text{softplus}(-2\lvert u \rvert))$, which remains stable and differentiable for all $u$.
 
 **Optimizer management.** At the start of each phase, Adam's momentum buffers $(m, v)$ and step counter are reset to zero. This prevents stale gradient statistics accumulated on the previous loss landscape from biasing the current optimization. Within each phase, the learning rate follows a cosine anneal from the base rate down to 10%:
 
