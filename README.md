@@ -184,7 +184,7 @@ These are smoothed into advantage estimates via the backward recursion:
 
 $$\hat{A}_t = \delta_t + \gamma \lambda \,(1 - d_t)\, \hat{A}_{t+1}$$
 
-where $\gamma = 0.99$ controls the discount horizon and $\lambda = 0.90$ controls the bias-variance tradeoff. The value function targets are then $G_t = \hat{A}_t + V_\phi(\mathbf{s}_t)$.
+where $\gamma = 0.99$ controls the discount horizon and $\lambda = 0.90$ controls the bias-variance tradeoff. The value function targets are then $G\_t = \hat{A}\_t + V\_\phi(\mathbf{s}\_t)$.
 
 ### Phasic Update
 
@@ -228,6 +228,7 @@ This reformulation never subtracts from $1.0$ and gracefully yields a stable lin
 $$\eta(k) = \eta_{\text{base}} \cdot \left[0.1 + 0.9 \cdot \tfrac{1 + \cos(\pi k / K)}{2}\right]$$
 
 This gives large steps early in each phase for broad exploration of the loss surface, tapering to fine adjustments as the phase ends.
+
 ---
 
 ## Material Model
