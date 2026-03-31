@@ -204,15 +204,34 @@ $$\mathcal{L}_V = \frac{1}{\lvert\mathcal{B}\rvert}\sum_{i \in \mathcal{B}} \max
 
 $$\hat{A}_i^{\text{refined}} = G_i - V_\phi(\mathbf{s}_i), \qquad \hat{A}_i^{\text{norm}} = \frac{\hat{A}_i^{\text{refined}} - \mu_{\hat{A}}}{\sigma_{\hat{A}} + 10^{-8}}$$
 
-**Phase 3 — Policy update** (8 epochs): Standard clipped surrogate with entropy bonus, using the clean advantages from Phase 2:
+**Phase 3 — Update the policy** (8 epochs). The policy is updated using the standard PPO clipped surrogate, with an entropy bonus to encourage exploration:
 
-$$r_t(\theta) = \frac{\pi_\theta(\mathbf{a}_t \mid \mathbf{s}_t)}{\pi_{\theta_{\text{old}}}(\mathbf{a}_t \mid \mathbf{s}_t)}$$
+$$r_i(\theta) = \frac{\pi_\theta(\mathbf{a}_i \mid \mathbf{s}_i)}{\pi_{\theta_{\text{old}}}(\mathbf{a}_i \mid \mathbf{s}_i)}$$
 
-$$\mathcal{L}\_\pi = -\frac{1}{\lvert\mathcal{B}\rvert}\sum\_{i \in \mathcal{B}} \min\left(r\_i \hat{A}\_i^{\text{norm}},\ \text{clamp}(r\_i, 1{-}\epsilon, 1{+}\epsilon)\ \hat{A}\_i^{\text{norm}}\right) - c\_H \cdot \bar{H}[\pi\_\theta]$$
+$$\mathcal{L}_\pi = -\frac{1}{\lvert\mathcal{B}\rvert}\sum_{i \in \mathcal{B}} \min\left(r_i \hat{A}_i^{\text{norm}},\ \text{clamp}(r_i, 1{-}\epsilon, 1{+}\epsilon)\ \hat{A}_i^{\text{norm}}\right) - c_H \cdot \bar{H}_a[\pi_\theta]$$
 
-**Optimizer resets**: At the start of each phase, Adam's momentum buffers $(m, v)$ and step counter are zeroed. This prevents stale gradient statistics from a previous landscape from biasing the current optimization. Within each phase, learning rate follows a cosine anneal:
+An important subtlety arises here. The Jacobian correction from the tanh squashing **cancels in the probability ratio** — both numerator and denominator are evaluated at the same stored action $\mathbf{a}$, so the $\lvert da/du \rvert^{-1}$ factors divide out and the policy gradient is unaffected.
+
+The **entropy term**, however, does not benefit from this cancellation. The entropy bonus $\bar{H}_a$ is meant to measure how spread out the policy's action distribution is and penalize collapse. If we naively use the Gaussian entropy $H[\mathcal{N}(\mu, \sigma^2)]$, we overestimate exploration — because $\tanh$ compresses the tails, actions near $\pm a_{\max}$ get squished together in a way the Gaussian doesn't see. The correct action-space entropy accounts for this compression:
+
+$$H_a[\pi_\theta] = H[\mathcal{N}(\mu, \sigma^2)] + \mathbb{E}_u\left[\sum_{d=1}^{D} \log\left(1 - \tanh^2(u_d)\right)\right] + D \cdot \log(a_{\max})$$
+
+The middle term is always negative and grows in magnitude as actions approach the boundaries — precisely the regime where the policy is collapsing to deterministic. Without this correction, the entropy bonus thinks the policy is still exploring when it has already converged, and the coefficient $c_H$ cannot intervene in time.
+
+***
+
+**Implementation Note: Numerical Stability (The Softplus Trick)**
+While the analytical Jacobian $\log(1 - \tanh^2(u))$ is mathematically exact, it is a numerical hazard in `float32`. If the network outputs a large raw action (e.g., $|u| > 4$), the $\tanh$ function rounds to exactly $1.0$, causing the correction term to evaluate to $\log(0)$ and instantly flood the network with `NaN` gradients. To prevent this, the codebase computes this term using its mathematically identical `softplus` formulation:
+$$2(\log(2) - |u| - \text{softplus}(-2|u|))$$
+This reformulation never subtracts from $1.0$ and gracefully yields a stable linear penalty of $-2|u|$ for large inputs, ensuring the gradients never collapse even at extreme boundary saturation.
+
+***
+
+**Optimizer management.** At the start of each phase, Adam's momentum buffers $(m, v)$ and step counter are reset to zero. This prevents stale gradient statistics accumulated on the previous loss landscape from biasing the current optimization. Within each phase, the learning rate follows a cosine anneal from the base rate down to 10%:
 
 $$\eta(k) = \eta_{\text{base}} \cdot \left[0.1 + 0.9 \cdot \tfrac{1 + \cos(\pi k / K)}{2}\right]$$
+
+This gives large steps early in each phase for broad exploration of the loss surface, tapering to fine adjustments as the phase ends.
 
 ---
 
