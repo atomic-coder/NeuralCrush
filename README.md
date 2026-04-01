@@ -62,7 +62,7 @@ The model operates on a heterogeneous graph with two edge types:
 
 Each node $i$ is encoded with velocity history, inverse mass, and type flags:
 
-$$\mathbf{x}_i^0 = \text{MLP}_{\text{enc}}\left(\left[\ \mathbf{v}_i^{t-1},\ \mathbf{v}_i^{t},\ m_i^{-1},\ \mathbf{f}_i\ \right]\right)$$
+$$\mathbf{x}_i^t = \text{MLP}_{\text{enc}}\left(\left[\ \mathbf{v}_i^{t-1},\ \mathbf{v}_i^{t},\ m_i^{-1},\ \mathbf{f}_i\ \right]\right)$$
 
 where $\mathbf{f}_i \in \{0,1\}^3$ encodes `[is_impactor, is_absorber, is_fixed]`.
 
